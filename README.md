@@ -96,6 +96,25 @@ agent-ready refresh payment-platform
 各コマンドは `--json` で機械可読な結果を出力できます。オプションはプロジェクト名より
 前に指定してください。
 
+## 長時間処理の進捗
+
+情報源の取得やAIによる調査に時間がかかる場合、現在の工程、処理中の情報源、件数、
+経過時間をリアルタイムに表示します。
+
+```text
+[1/2] Collecting "payment-api"...
+✓ Collected "payment-api" (1.8s).
+[1/2] Analyzing "payment-api" with codex...
+Still analyzing "payment-api" (15s elapsed).
+✓ Analyzed "payment-api" (42.6s).
+Synthesizing catalog for "payment-platform" from 2 sources...
+✓ Synthesized the catalog for "payment-platform" (18.4s).
+```
+
+対話端末ではスピナーと経過時間を同じ行で更新します。出力をファイルや別コマンドへ
+渡した場合は、15秒ごとの行として進捗を残します。進捗は標準エラー出力へ、最終結果は
+標準出力へ分離しているため、`--json` の出力もそのままパースできます。
+
 ## 対応する情報源
 
 - GitHub、GitLab、BitbucketのHTTPS URL

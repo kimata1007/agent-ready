@@ -235,6 +235,7 @@ func (a *Application) service() (KnowledgeService, error) {
 	return knowledge.Service{
 		Store:     store,
 		Collector: source.Collector{Store: store},
+		Progress:  newProgressReporter(a.Errors),
 		Integration: integration.Manager{
 			Home:           home,
 			AgentReadyRoot: root,

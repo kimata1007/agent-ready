@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
+	"path"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/kimata1007/agent-ready/internal/analyzer"
@@ -22,6 +26,7 @@ type Service struct {
 	Collector   source.Collector
 	NewAnalyzer AnalyzerFactory
 	Integration AgentIntegration
+	Progress    ProgressReporter
 	Now         func() time.Time
 }
 
@@ -125,7 +130,14 @@ func (service Service) Refresh(ctx context.Context, projectName string) (Result,
 	changed := make([]string, 0)
 	unchanged := 0
 	for index, existing := range sourcesValue.Sources {
+		finishCollect := service.startProgress(ProgressTask{
+			Phase:   ProgressCollect,
+			Source:  existing.Name,
+			Current: index + 1,
+			Total:   len(sourcesValue.Sources),
+		})
 		collected, err := service.collector().Refresh(ctx, projectName, existing)
+		finishCollect(err)
 		if err != nil {
 			return Result{}, fmt.Errorf("refresh source %q: %w", existing.Name, err)
 		}
@@ -138,7 +150,15 @@ func (service Service) Refresh(ctx context.Context, projectName string) (Result,
 			_ = collected.Cleanup()
 			continue
 		}
+		finishAnalyze := service.startProgress(ProgressTask{
+			Phase:    ProgressAnalyze,
+			Source:   collected.Source.Name,
+			Provider: projectValue.Analyzer.Provider,
+			Current:  index + 1,
+			Total:    len(sourcesValue.Sources),
+		})
 		analysis, analyzeErr := client.Analyze(ctx, collected.Source, collected.Workspace)
+		finishAnalyze(analyzeErr)
 		cleanupErr := collected.Cleanup()
 		if analyzeErr != nil {
 			return Result{}, fmt.Errorf("analyze source %q: %w", existing.Name, analyzeErr)
@@ -204,8 +224,15 @@ func (service Service) add(
 	}
 	added := make([]string, 0, len(inputs))
 	updated := append([]project.Source(nil), sourcesValue.Sources...)
-	for _, input := range inputs {
+	for index, input := range inputs {
+		finishCollect := service.startProgress(ProgressTask{
+			Phase:   ProgressCollect,
+			Source:  pendingSourceName(input),
+			Current: index + 1,
+			Total:   len(inputs),
+		})
 		collected, err := service.collector().Collect(ctx, projectValue.Name, input)
+		finishCollect(err)
 		if err != nil {
 			return Result{}, err
 		}
@@ -217,7 +244,15 @@ func (service Service) add(
 			_ = collected.Cleanup()
 			return Result{}, fmt.Errorf("source %q is already registered", collected.Source.Name)
 		}
+		finishAnalyze := service.startProgress(ProgressTask{
+			Phase:    ProgressAnalyze,
+			Source:   collected.Source.Name,
+			Provider: projectValue.Analyzer.Provider,
+			Current:  index + 1,
+			Total:    len(inputs),
+		})
 		analysis, analyzeErr := client.Analyze(ctx, collected.Source, collected.Workspace)
+		finishAnalyze(analyzeErr)
 		cleanupErr := collected.Cleanup()
 		if analyzeErr != nil {
 			return Result{}, fmt.Errorf("analyze source %q: %w", collected.Source.Name, analyzeErr)
@@ -261,7 +296,14 @@ func (service Service) regenerate(
 		}
 		analyses = append(analyses, analysis)
 	}
+	finishSynthesize := service.startProgress(ProgressTask{
+		Phase:    ProgressSynthesize,
+		Source:   projectValue.Name,
+		Provider: projectValue.Analyzer.Provider,
+		Total:    len(analyses),
+	})
 	synthesis, err := client.Synthesize(ctx, *projectValue, analyses)
+	finishSynthesize(err)
 	if err != nil {
 		return fmt.Errorf("synthesize project catalog: %w", err)
 	}
@@ -319,4 +361,25 @@ func sourceIdentity(saved project.Source) string {
 		return saved.Kind + "\x00" + saved.Digest
 	}
 	return saved.Kind + "\x00" + saved.Locator
+}
+
+func pendingSourceName(input source.Input) string {
+	if name := strings.TrimSpace(input.Name); name != "" {
+		return name
+	}
+	value := strings.TrimSpace(input.Value)
+	if value == "-" {
+		return "standard input"
+	}
+	if parsed, err := url.Parse(value); err == nil && parsed.Hostname() != "" {
+		name := path.Base(strings.TrimSuffix(parsed.Path, "/"))
+		if name == "." || name == "/" || name == "" {
+			return parsed.Hostname()
+		}
+		return parsed.Hostname() + "/" + name
+	}
+	if name := filepath.Base(value); name != "." && name != string(filepath.Separator) && name != "" {
+		return name
+	}
+	return "source"
 }

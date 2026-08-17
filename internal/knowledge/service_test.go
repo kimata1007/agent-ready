@@ -18,6 +18,23 @@ type fakeAnalyzer struct {
 	synthesized int
 }
 
+type recordedProgress struct {
+	task ProgressTask
+	err  error
+}
+
+type fakeProgressReporter struct {
+	records []*recordedProgress
+}
+
+func (reporter *fakeProgressReporter) Start(task ProgressTask) func(error) {
+	record := &recordedProgress{task: task}
+	reporter.records = append(reporter.records, record)
+	return func(err error) {
+		record.err = err
+	}
+}
+
 func (fake *fakeAnalyzer) Analyze(
 	_ context.Context,
 	saved project.Source,
@@ -99,6 +116,72 @@ func TestInitBuildsCatalogFromMultipleSources(t *testing.T) {
 	}
 	if !strings.Contains(string(contextContent), "Source routing") {
 		t.Fatalf("context.md = %s", contextContent)
+	}
+}
+
+func TestInitReportsLongRunningStages(t *testing.T) {
+	t.Parallel()
+	service, _, _ := newTestService(t)
+	reporter := &fakeProgressReporter{}
+	service.Progress = reporter
+	document := filepath.Join(t.TempDir(), "architecture.md")
+	if err := os.WriteFile(document, []byte("# Architecture\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	_, err := service.Init(context.Background(), InitOptions{
+		Project:  "payments",
+		Analyzer: project.AnalyzerConfig{Provider: "codex"},
+		Sources: []source.Input{
+			{Value: document},
+			{Value: "-", Name: "decisions", Content: []byte("# Decisions\n")},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+
+	wantPhases := []ProgressPhase{
+		ProgressCollect,
+		ProgressAnalyze,
+		ProgressCollect,
+		ProgressAnalyze,
+		ProgressSynthesize,
+	}
+	if len(reporter.records) != len(wantPhases) {
+		t.Fatalf("progress records = %d, want %d", len(reporter.records), len(wantPhases))
+	}
+	for index, want := range wantPhases {
+		record := reporter.records[index]
+		if record.task.Phase != want {
+			t.Errorf("record %d phase = %q, want %q", index, record.task.Phase, want)
+		}
+		if record.err != nil {
+			t.Errorf("record %d error = %v", index, record.err)
+		}
+	}
+	if reporter.records[0].task.Current != 1 || reporter.records[0].task.Total != 2 {
+		t.Errorf("first progress task = %#v", reporter.records[0].task)
+	}
+	if reporter.records[3].task.Provider != "codex" {
+		t.Errorf("analyzer provider = %q", reporter.records[3].task.Provider)
+	}
+	if reporter.records[4].task.Source != "payments" || reporter.records[4].task.Total != 2 {
+		t.Errorf("synthesis task = %#v", reporter.records[4].task)
+	}
+}
+
+func TestPendingSourceNameDoesNotExposeURLQuery(t *testing.T) {
+	t.Parallel()
+	input := source.Input{Value: "https://example.test/docs/guide?tracking=opaque"}
+	name := pendingSourceName(input)
+	if name != "example.test/guide" {
+		t.Fatalf("pendingSourceName() = %q", name)
+	}
+	for _, queryPart := range []string{"tracking", "opaque"} {
+		if strings.Contains(name, queryPart) {
+			t.Errorf("pending source name exposes %q: %q", queryPart, name)
+		}
 	}
 }
 
