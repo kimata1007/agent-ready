@@ -167,6 +167,25 @@ func (store Store) SaveCatalog(value Catalog, markdown, context string) error {
 	return atomicWrite(filepath.Join(directory, "context.md"), []byte(context))
 }
 
+func (store Store) LoadCatalog(name string) (Catalog, error) {
+	var value Catalog
+	if err := store.read(name, catalogFile, &value); err != nil {
+		return Catalog{}, err
+	}
+	return value, nil
+}
+
+func (store Store) Remove(name string) error {
+	directory, err := store.ProjectDir(name)
+	if err != nil {
+		return err
+	}
+	if err := os.RemoveAll(directory); err != nil {
+		return fmt.Errorf("remove project %q: %w", name, err)
+	}
+	return nil
+}
+
 func (store Store) PutObject(projectName string, content []byte) (string, error) {
 	directory, err := store.ProjectDir(projectName)
 	if err != nil {
