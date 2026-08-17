@@ -200,7 +200,7 @@ func (service Service) add(
 	}
 	existing := make(map[string]struct{}, len(sourcesValue.Sources))
 	for _, saved := range sourcesValue.Sources {
-		existing[saved.ID] = struct{}{}
+		existing[sourceIdentity(saved)] = struct{}{}
 	}
 	added := make([]string, 0, len(inputs))
 	updated := append([]project.Source(nil), sourcesValue.Sources...)
@@ -212,7 +212,8 @@ func (service Service) add(
 		if collected.Cleanup == nil {
 			collected.Cleanup = func() error { return nil }
 		}
-		if _, duplicate := existing[collected.Source.ID]; duplicate {
+		identity := sourceIdentity(collected.Source)
+		if _, duplicate := existing[identity]; duplicate {
 			_ = collected.Cleanup()
 			return Result{}, fmt.Errorf("source %q is already registered", collected.Source.Name)
 		}
@@ -229,7 +230,7 @@ func (service Service) add(
 			return Result{}, err
 		}
 		collected.Source.AnalysisFile = analysisFile
-		existing[collected.Source.ID] = struct{}{}
+		existing[identity] = struct{}{}
 		updated = append(updated, collected.Source)
 		added = append(added, collected.Source.ID)
 	}
@@ -311,4 +312,11 @@ func (service Service) afterChange() error {
 		}
 	}
 	return nil
+}
+
+func sourceIdentity(saved project.Source) string {
+	if saved.Kind == "text" {
+		return saved.Kind + "\x00" + saved.Digest
+	}
+	return saved.Kind + "\x00" + saved.Locator
 }

@@ -54,9 +54,9 @@ func renderCatalog(catalog project.Catalog) string {
 	var output strings.Builder
 	fmt.Fprintf(&output, "# %s knowledge catalog\n\n", catalog.Project)
 	fmt.Fprintf(&output, "%s\n\n", catalog.Overview)
-	renderList(&output, "Key concepts", catalog.KeyConcepts)
-	renderList(&output, "Workflows", catalog.Workflows)
-	renderList(&output, "Source guide", catalog.SourceGuide)
+	renderList(&output, 2, "Key concepts", catalog.KeyConcepts)
+	renderList(&output, 2, "Workflows", catalog.Workflows)
+	renderList(&output, 2, "Source guide", catalog.SourceGuide)
 	output.WriteString("## Registered sources\n\n")
 	for _, entry := range catalog.Entries {
 		fmt.Fprintf(&output, "### %s\n\n", entry.SourceName)
@@ -69,7 +69,7 @@ func renderCatalog(catalog project.Catalog) string {
 		fmt.Fprintf(&output, "- Content digest: `%s`\n\n", entry.Digest)
 		fmt.Fprintf(&output, "%s\n\n", entry.Summary)
 		fmt.Fprintf(&output, "Purpose: %s\n\n", entry.Purpose)
-		renderList(&output, "Important concepts", entry.KeyConcepts)
+		renderList(&output, 4, "Important concepts", entry.KeyConcepts)
 		if len(entry.Locations) > 0 {
 			output.WriteString("#### Where to look\n\n")
 			for _, location := range entry.Locations {
@@ -77,8 +77,8 @@ func renderCatalog(catalog project.Catalog) string {
 			}
 			output.WriteString("\n")
 		}
-		renderList(&output, "When to use this source", entry.Usage)
-		renderList(&output, "Warnings", entry.Warnings)
+		renderList(&output, 4, "When to use this source", entry.Usage)
+		renderList(&output, 4, "Warnings", entry.Warnings)
 	}
 	return output.String()
 }
@@ -89,7 +89,7 @@ func renderContext(catalog project.Catalog) string {
 	output.WriteString("This file is generated. Treat `catalog.json` as the machine-readable index and ")
 	output.WriteString("`catalog.md` as the detailed human-readable catalog.\n\n")
 	fmt.Fprintf(&output, "%s\n\n", catalog.Overview)
-	renderList(&output, "Primary workflows", catalog.Workflows)
+	renderList(&output, 2, "Primary workflows", catalog.Workflows)
 	output.WriteString("## Source routing\n\n")
 	for _, entry := range catalog.Entries {
 		fmt.Fprintf(
@@ -104,11 +104,11 @@ func renderContext(catalog project.Catalog) string {
 	return output.String()
 }
 
-func renderList(output *strings.Builder, title string, values []string) {
+func renderList(output *strings.Builder, level int, title string, values []string) {
 	if len(values) == 0 {
 		return
 	}
-	fmt.Fprintf(output, "## %s\n\n", title)
+	fmt.Fprintf(output, "%s %s\n\n", strings.Repeat("#", level), title)
 	for _, value := range values {
 		fmt.Fprintf(output, "- %s\n", value)
 	}

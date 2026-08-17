@@ -170,3 +170,27 @@ func TestAddAppendsSourceAndRebuildsCatalog(t *testing.T) {
 		t.Fatalf("catalog entries = %d", len(catalog.Entries))
 	}
 }
+
+func TestAddRejectsSameSourceUnderDifferentName(t *testing.T) {
+	t.Parallel()
+	service, _, fake := newTestService(t)
+	document := filepath.Join(t.TempDir(), "guide.md")
+	if err := os.WriteFile(document, []byte("guide"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	if _, err := service.Init(context.Background(), InitOptions{
+		Project: "docs", Sources: []source.Input{{Value: document, Name: "guide"}},
+	}); err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+	fake.analyzed = nil
+	_, err := service.Add(context.Background(), AddOptions{
+		Project: "docs", Sources: []source.Input{{Value: document, Name: "renamed"}},
+	})
+	if err == nil {
+		t.Fatal("Add() succeeded")
+	}
+	if len(fake.analyzed) != 0 {
+		t.Fatalf("duplicate source was analyzed: %v", fake.analyzed)
+	}
+}

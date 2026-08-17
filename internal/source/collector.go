@@ -363,7 +363,7 @@ func validateRemote(value string) error {
 	if err != nil {
 		return fmt.Errorf("parse source URL: %w", err)
 	}
-	if parsed.User != nil {
+	if parsed.User != nil && !(parsed.Scheme == "ssh" && !hasPassword(parsed.User)) {
 		return errors.New("source URLs must not contain user information or credentials")
 	}
 	for key := range parsed.Query() {
@@ -372,6 +372,11 @@ func validateRemote(value string) error {
 		}
 	}
 	return nil
+}
+
+func hasPassword(user *url.Userinfo) bool {
+	_, present := user.Password()
+	return present
 }
 
 func isRemote(locator string) bool {

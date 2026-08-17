@@ -106,3 +106,15 @@ func TestRejectsCredentialBearingURL(t *testing.T) {
 		t.Fatal("Collect() succeeded")
 	}
 }
+
+func TestAcceptsSSHGitUsernameWithoutPassword(t *testing.T) {
+	t.Parallel()
+	locator := "ssh://git" + "@" + "example.test/team/service.git"
+	remote, kind, ok, err := classifyRemote(locator)
+	if err != nil {
+		t.Fatalf("classifyRemote() error = %v", err)
+	}
+	if !ok || kind != "git" || remote != locator {
+		t.Fatalf("classifyRemote() = %q, %q, %t", remote, kind, ok)
+	}
+}

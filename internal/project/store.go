@@ -67,6 +67,12 @@ func (store Store) Create(value Project) error {
 	if err := os.Mkdir(directory, 0o700); err != nil {
 		return fmt.Errorf("create project directory: %w", err)
 	}
+	complete := false
+	defer func() {
+		if !complete {
+			_ = os.RemoveAll(directory)
+		}
+	}()
 	now := time.Now().UTC()
 	if value.SchemaVersion == 0 {
 		value.SchemaVersion = SchemaVersion
@@ -80,12 +86,16 @@ func (store Store) Create(value Project) error {
 	if err := writeJSON(filepath.Join(directory, projectFile), value); err != nil {
 		return err
 	}
-	return writeJSON(filepath.Join(directory, sourcesFile), Sources{
+	if err := writeJSON(filepath.Join(directory, sourcesFile), Sources{
 		SchemaVersion: SchemaVersion,
 		Project:       value.Name,
 		UpdatedAt:     value.CreatedAt,
 		Sources:       []Source{},
-	})
+	}); err != nil {
+		return err
+	}
+	complete = true
+	return nil
 }
 
 func (store Store) LoadProject(name string) (Project, error) {
