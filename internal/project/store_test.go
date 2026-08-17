@@ -70,3 +70,30 @@ func TestValidateNameRejectsTraversal(t *testing.T) {
 		}
 	}
 }
+
+func TestRebuildIndexPublishesContextLocations(t *testing.T) {
+	t.Parallel()
+	store := Store{Root: t.TempDir()}
+	if err := store.Create(Project{Name: "docs", Analyzer: AnalyzerConfig{Provider: "codex"}}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	sources, err := store.LoadSources("docs")
+	if err != nil {
+		t.Fatalf("LoadSources() error = %v", err)
+	}
+	sources.Sources = []Source{{Kind: "directory", Locator: "/workspace/docs"}}
+	if err := store.SaveSources(sources); err != nil {
+		t.Fatalf("SaveSources() error = %v", err)
+	}
+	if err := store.RebuildIndex(time.Date(2026, 8, 17, 2, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("RebuildIndex() error = %v", err)
+	}
+	var index Index
+	if err := readJSON(filepath.Join(store.Root, "index.json"), &index); err != nil {
+		t.Fatalf("readJSON(index) error = %v", err)
+	}
+	if len(index.Projects) != 1 || index.Projects[0].Name != "docs" ||
+		index.Projects[0].ContextPath != filepath.Join(store.Root, "docs", "context.md") {
+		t.Fatalf("Index = %#v", index)
+	}
+}

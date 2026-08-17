@@ -85,3 +85,21 @@ type Catalog struct {
 	SourceGuide   []string       `json:"sourceGuide"`
 	Entries       []CatalogEntry `json:"entries"`
 }
+
+type IndexSource struct {
+	Kind    string `json:"kind"`
+	Locator string `json:"locator"`
+}
+
+type IndexProject struct {
+	Name        string        `json:"name"`
+	ContextPath string        `json:"contextPath"`
+	CatalogPath string        `json:"catalogPath"`
+	Sources     []IndexSource `json:"sources"`
+}
+
+type Index struct {
+	SchemaVersion int            `json:"schemaVersion"`
+	UpdatedAt     time.Time      `json:"updatedAt"`
+	Projects      []IndexProject `json:"projects"`
+}

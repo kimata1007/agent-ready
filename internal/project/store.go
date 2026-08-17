@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -184,6 +185,55 @@ func (store Store) Remove(name string) error {
 		return fmt.Errorf("remove project %q: %w", name, err)
 	}
 	return nil
+}
+
+func (store Store) RebuildIndex(now time.Time) error {
+	if err := os.MkdirAll(store.Root, 0o700); err != nil {
+		return fmt.Errorf("create agent-ready home: %w", err)
+	}
+	entries, err := os.ReadDir(store.Root)
+	if err != nil {
+		return fmt.Errorf("list agent-ready projects: %w", err)
+	}
+	projects := make([]IndexProject, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() || ValidateName(entry.Name()) != nil {
+			continue
+		}
+		projectValue, err := store.LoadProject(entry.Name())
+		if err != nil {
+			continue
+		}
+		sourcesValue, err := store.LoadSources(entry.Name())
+		if err != nil {
+			continue
+		}
+		indexedSources := make([]IndexSource, 0, len(sourcesValue.Sources))
+		for _, saved := range sourcesValue.Sources {
+			indexedSources = append(indexedSources, IndexSource{
+				Kind:    saved.Kind,
+				Locator: saved.Locator,
+			})
+		}
+		directory, err := store.ProjectDir(projectValue.Name)
+		if err != nil {
+			return err
+		}
+		projects = append(projects, IndexProject{
+			Name:        projectValue.Name,
+			ContextPath: filepath.Join(directory, "context.md"),
+			CatalogPath: filepath.Join(directory, "catalog.json"),
+			Sources:     indexedSources,
+		})
+	}
+	sort.Slice(projects, func(left, right int) bool {
+		return projects[left].Name < projects[right].Name
+	})
+	return writeJSON(filepath.Join(store.Root, "index.json"), Index{
+		SchemaVersion: SchemaVersion,
+		UpdatedAt:     now.UTC(),
+		Projects:      projects,
+	})
 }
 
 func (store Store) PutObject(projectName string, content []byte) (string, error) {

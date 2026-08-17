@@ -13,10 +13,15 @@ import (
 
 type AnalyzerFactory func(project.AnalyzerConfig) (analyzer.Analyzer, error)
 
+type AgentIntegration interface {
+	Ensure() error
+}
+
 type Service struct {
 	Store       project.Store
 	Collector   source.Collector
 	NewAnalyzer AnalyzerFactory
+	Integration AgentIntegration
 	Now         func() time.Time
 }
 
@@ -64,13 +69,18 @@ func (service Service) Init(ctx context.Context, options InitOptions) (result Re
 	complete := false
 	defer func() {
 		if !complete {
-			if err := service.Store.Remove(options.Project); err != nil && resultErr == nil {
-				resultErr = err
+			removeErr := service.Store.Remove(options.Project)
+			_ = service.Store.RebuildIndex(service.now())
+			if removeErr != nil && resultErr == nil {
+				resultErr = removeErr
 			}
 		}
 	}()
 	result, resultErr = service.add(ctx, projectValue, options.Sources)
 	if resultErr != nil {
+		return Result{}, resultErr
+	}
+	if resultErr = service.afterChange(); resultErr != nil {
 		return Result{}, resultErr
 	}
 	complete = true
@@ -85,7 +95,14 @@ func (service Service) Add(ctx context.Context, options AddOptions) (Result, err
 	if err != nil {
 		return Result{}, err
 	}
-	return service.add(ctx, projectValue, options.Sources)
+	result, err := service.add(ctx, projectValue, options.Sources)
+	if err != nil {
+		return Result{}, err
+	}
+	if err := service.afterChange(); err != nil {
+		return Result{}, err
+	}
+	return result, nil
 }
 
 func (service Service) Refresh(ctx context.Context, projectName string) (Result, error) {
@@ -143,6 +160,9 @@ func (service Service) Refresh(ctx context.Context, projectName string) (Result,
 		if err := service.Store.SaveSources(sourcesValue); err != nil {
 			return Result{}, err
 		}
+		if err := service.afterChange(); err != nil {
+			return Result{}, err
+		}
 		return Result{
 			Project:        projectName,
 			UnchangedCount: unchanged,
@@ -151,6 +171,9 @@ func (service Service) Refresh(ctx context.Context, projectName string) (Result,
 		}, nil
 	}
 	if err := service.regenerate(ctx, client, &projectValue, sourcesValue); err != nil {
+		return Result{}, err
+	}
+	if err := service.afterChange(); err != nil {
 		return Result{}, err
 	}
 	return Result{
@@ -276,4 +299,16 @@ func (service Service) now() time.Time {
 		return service.Now().UTC()
 	}
 	return time.Now().UTC()
+}
+
+func (service Service) afterChange() error {
+	if err := service.Store.RebuildIndex(service.now()); err != nil {
+		return err
+	}
+	if service.Integration != nil {
+		if err := service.Integration.Ensure(); err != nil {
+			return fmt.Errorf("configure agent startup instructions: %w", err)
+		}
+	}
+	return nil
 }

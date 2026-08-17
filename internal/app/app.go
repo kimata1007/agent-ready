@@ -7,9 +7,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/kimata1007/agent-ready/internal/integration"
 	"github.com/kimata1007/agent-ready/internal/knowledge"
 	"github.com/kimata1007/agent-ready/internal/project"
 	"github.com/kimata1007/agent-ready/internal/source"
@@ -226,9 +228,19 @@ func (a *Application) service() (KnowledgeService, error) {
 		}
 	}
 	store := project.Store{Root: root}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("find user home: %w", err)
+	}
 	return knowledge.Service{
 		Store:     store,
 		Collector: source.Collector{Store: store},
+		Integration: integration.Manager{
+			Home:           home,
+			AgentReadyRoot: root,
+			CodexHome:      strings.TrimSpace(os.Getenv("CODEX_HOME")),
+			ClaudeHome:     strings.TrimSpace(os.Getenv("CLAUDE_CONFIG_DIR")),
+		},
 	}, nil
 }
 
